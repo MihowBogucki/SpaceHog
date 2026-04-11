@@ -5,10 +5,17 @@ public sealed class DirScanner
     private readonly int _maxDepth;
     private volatile bool _cancelled;
     private long _totalScanned;
+    private static readonly EnumerationOptions EnumerateOptions = new()
+    {
+        IgnoreInaccessible = true,
+        RecurseSubdirectories = false,
+        ReturnSpecialDirectories = false
+    };
 
     public long TotalScanned => _totalScanned;
 
     public event Action<string>? ProgressChanged;
+    public event Action<DirEntry>? RootChildCompleted;
 
     public DirScanner(int maxDepth = 6)
     {
@@ -17,35 +24,40 @@ public sealed class DirScanner
 
     public void Cancel() => _cancelled = true;
 
-    public DirEntry Scan(string rootPath)
+    public DirEntry Scan(string rootPath, CancellationToken cancellationToken = default)
     {
         _cancelled = false;
         _totalScanned = 0;
-        var result = ScanDir(rootPath, 0);
+        var result = ScanDir(rootPath, 0, cancellationToken);
         result.Name = rootPath;
         return result;
     }
 
-    private DirEntry ScanDir(string path, int depth)
+    private void ThrowIfCancellationRequested(CancellationToken cancellationToken)
     {
+        if (_cancelled || cancellationToken.IsCancellationRequested)
+            throw new OperationCanceledException(cancellationToken);
+    }
+
+    private DirEntry ScanDir(string path, int depth, CancellationToken cancellationToken)
+    {
+        ThrowIfCancellationRequested(cancellationToken);
+
         var entry = new DirEntry
         {
             Name = Path.GetFileName(path),
             FullPath = path
         };
 
-        if (_cancelled) return entry;
-
         // Count files
         try
         {
-            var files = Directory.GetFiles(path);
-            foreach (var f in files)
+            foreach (var filePath in Directory.EnumerateFiles(path, "*", EnumerateOptions))
             {
-                if (_cancelled) break;
+                ThrowIfCancellationRequested(cancellationToken);
                 try
                 {
-                    var fi = new FileInfo(f);
+                    var fi = new FileInfo(filePath);
                     entry.Size += fi.Length;
                     entry.FileCount++;
                     Interlocked.Increment(ref _totalScanned);
@@ -60,25 +72,27 @@ public sealed class DirScanner
         {
             try
             {
-                var dirs = Directory.GetDirectories(path);
-                foreach (var d in dirs)
+                foreach (var dirPath in Directory.EnumerateDirectories(path, "*", EnumerateOptions))
                 {
-                    if (_cancelled) break;
+                    ThrowIfCancellationRequested(cancellationToken);
                     try
                     {
-                        var attr = File.GetAttributes(d);
+                        var attr = File.GetAttributes(dirPath);
                         if ((attr & FileAttributes.ReparsePoint) != 0) continue;
                     }
                     catch { continue; }
 
-                    if (_totalScanned % 500 == 0)
-                        ProgressChanged?.Invoke(d);
+                    if (_totalScanned % 100 == 0)
+                        ProgressChanged?.Invoke(dirPath);
 
-                    var child = ScanDir(d, depth + 1);
+                    var child = ScanDir(dirPath, depth + 1, cancellationToken);
                     entry.Size += child.Size;
                     entry.FileCount += child.FileCount;
                     entry.DirCount += child.DirCount + 1;
                     entry.Children.Add(child);
+
+                    if (depth == 0)
+                        RootChildCompleted?.Invoke(child);
                 }
             }
             catch { }

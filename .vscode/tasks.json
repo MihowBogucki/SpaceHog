@@ -1,0 +1,12 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run SpaceHog EXE",
+			"type": "shell",
+			"command": "c:\\Source\\github\\SpaceHog\\bin\\Release\\net9.0-windows\\win-x64\\SpaceHog.exe",
+			"isBackground": true,
+			"group": "test"
+		}
+	]
+}

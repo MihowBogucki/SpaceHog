@@ -2,7 +2,7 @@
 
 **Find out what's hogging your disk space.**
 
-SpaceHog is a free, open-source disk space analyzer for Windows. It scans your drives and shows you exactly where your storage is going — with a fast, dark-themed UI inspired by tools like TreeSize.
+SpaceHog is a free, open-source disk space analyzer for Windows. It scans your drives and shows you exactly where your storage is going — with a fast, dark-themed UI.
 
 ![.NET](https://img.shields.io/badge/.NET%209-512BD4?logo=dotnet&logoColor=white)
 ![Windows](https://img.shields.io/badge/Windows-0078D4?logo=windows&logoColor=white)
@@ -105,4 +105,4 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## 🙏 Acknowledgments
 
-Inspired by [TreeSize](https://www.jam-software.com/treesize_free) and [WizTree](https://wiztreefree.com/) — fantastic tools that motivated building an open-source alternative.
+Built as an open-source alternative for analyzing disk usage on Windows.

@@ -1,0 +1,24 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceHog", "SpaceHog.csproj", "{05232BCA-AAD3-3264-11C0-141E9EC927D2}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{05232BCA-AAD3-3264-11C0-141E9EC927D2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{05232BCA-AAD3-3264-11C0-141E9EC927D2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{05232BCA-AAD3-3264-11C0-141E9EC927D2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{05232BCA-AAD3-3264-11C0-141E9EC927D2}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {3CF11A93-B808-4715-BCCA-672FE48B02D4}
+	EndGlobalSection
+EndGlobal
