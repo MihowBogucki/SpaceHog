@@ -39,6 +39,12 @@ public sealed class MainForm : Form
     private readonly InsightCard _focusInsight;
     private readonly UsageChartPanel _usageChart;
     private readonly FolderGuidancePanel _guidancePanel;
+    private readonly FlowLayoutPanel _breadcrumbFlow;
+    private readonly FlowLayoutPanel _filterChipFlow;
+    private readonly Button _backButton;
+    private readonly Button _forwardButton;
+    private readonly Button _densityButton;
+    private readonly Dictionary<string, Button> _filterChipButtons = new(StringComparer.OrdinalIgnoreCase);
 
     private DirEntry? _root;
     private DirEntry? _liveRoot;
@@ -50,15 +56,20 @@ public sealed class MainForm : Form
     private bool _detailsSortAscending;
     private bool _isScanning;
     private DateTime _scanStartedUtc;
+    private readonly List<string> _navigationHistory = new();
+    private int _navigationIndex = -1;
+    private bool _suppressHistoryPush;
+    private string _activeCategoryFilter = "All";
+    private bool _comfortableDensity = true;
 
     public MainForm()
     {
         Text = "SpaceHog";
         Size = new Size(1200, 750);
         StartPosition = FormStartPosition.CenterScreen;
-        BackColor = Color.FromArgb(30, 30, 30);
-        ForeColor = Color.FromArgb(220, 220, 220);
-        Font = new Font("Segoe UI", 9.5f);
+        BackColor = UiTheme.AppBackground;
+        ForeColor = UiTheme.TextPrimary;
+        Font = UiTheme.BodyFont;
         MinimumSize = new Size(980, 640);
         DoubleBuffered = true;
         Icon = CreatePigIcon();
@@ -69,10 +80,10 @@ public sealed class MainForm : Form
         // --- Header ---
         _headerPanel = new Panel
         {
-            BackColor = Color.FromArgb(20, 24, 30),
+            BackColor = UiTheme.SurfaceHeader,
             Dock = DockStyle.Top,
-            Height = 92,
-            Padding = new Padding(18, 14, 18, 12)
+            Height = 98,
+            Padding = new Padding(22, 16, 22, 14)
         };
         _headerPanel.Paint += HeaderPanel_Paint;
 
@@ -94,8 +105,8 @@ public sealed class MainForm : Form
         {
             AutoSize = true,
             Text = "SpaceHog",
-            Font = new Font("Segoe UI Variable Display", 20f, FontStyle.Bold),
-            ForeColor = Color.White,
+            Font = UiTheme.BrandFont,
+            ForeColor = UiTheme.TextPrimary,
             Location = new Point(0, 2),
             BackColor = Color.Transparent
         };
@@ -103,9 +114,9 @@ public sealed class MainForm : Form
         {
             AutoSize = true,
             Text = "Live disk visibility with cleanup guidance built in",
-            Font = new Font("Segoe UI", 9.5f),
-            ForeColor = Color.FromArgb(165, 190, 210),
-            Location = new Point(2, 40),
+            Font = UiTheme.BodySmallFont,
+            ForeColor = UiTheme.TextMuted,
+            Location = new Point(2, 44),
             BackColor = Color.Transparent
         };
         brandPanel.Controls.AddRange(new Control[] { _brandTitle, _brandSubtitle });
@@ -117,25 +128,25 @@ public sealed class MainForm : Form
             WrapContents = false,
             BackColor = Color.Transparent,
             Margin = new Padding(0),
-            Padding = new Padding(0, 12, 14, 0)
+            Padding = new Padding(0, 14, 12, 0)
         };
 
         var driveLabel = new Label
         {
             AutoSize = true,
             Text = "Drive",
-            Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold),
-            ForeColor = Color.FromArgb(185, 205, 220),
-            Margin = new Padding(0, 10, 8, 0)
+            Font = UiTheme.CaptionFont,
+            ForeColor = UiTheme.TextMuted,
+            Margin = new Padding(0, 10, 10, 0)
         };
 
         var drivePicker = new ComboBox
         {
             DropDownStyle = ComboBoxStyle.DropDownList,
-            BackColor = Color.FromArgb(38, 44, 52),
-            ForeColor = Color.FromArgb(220, 220, 220),
+            BackColor = UiTheme.SurfaceRaised,
+            ForeColor = UiTheme.TextPrimary,
             FlatStyle = FlatStyle.Flat,
-            Width = 188,
+            Width = 210,
             Margin = new Padding(0, 2, 10, 0)
         };
         _driveCombo = drivePicker;
@@ -146,34 +157,34 @@ public sealed class MainForm : Form
         }
         if (_driveCombo.Items.Count > 0) _driveCombo.SelectedIndex = 0;
 
-        _scanButton = CreateHeaderButton("Scan", Color.FromArgb(33, 150, 243), Color.White);
+        _scanButton = CreateHeaderButton("Scan", UiTheme.Accent, UiTheme.TextPrimary);
         _scanButton.Click += async (_, _) => await StartScan();
 
-        _stopButton = CreateHeaderButton("Stop", Color.FromArgb(58, 64, 74), Color.FromArgb(255, 200, 140));
+        _stopButton = CreateHeaderButton("Stop", UiTheme.SurfaceRaised, UiTheme.Warning);
         _stopButton.Click += (_, _) => StopScan();
 
-        _browseButton = CreateHeaderButton("Browse...", Color.FromArgb(38, 44, 52), Color.White);
+        _browseButton = CreateHeaderButton("Browse...", UiTheme.SurfaceRaised, UiTheme.TextPrimary);
         _browseButton.Click += async (_, _) => await BrowseAndScan();
 
         drivePanel.Controls.AddRange(new Control[] { driveLabel, _driveCombo, _scanButton, _stopButton, _browseButton });
 
         var searchPanel = new Panel
         {
-            Width = 270,
-            Height = 44,
+            Width = 300,
+            Height = 46,
             Margin = new Padding(0, 12, 0, 0),
-            BackColor = Color.FromArgb(15, 19, 24)
+            BackColor = UiTheme.SurfaceInset
         };
         searchPanel.Paint += SearchPanel_Paint;
 
         _searchBox = new TextBox
         {
-            BackColor = Color.FromArgb(38, 44, 52),
-            ForeColor = Color.FromArgb(220, 220, 220),
+            BackColor = UiTheme.SurfaceRaised,
+            ForeColor = UiTheme.TextPrimary,
             BorderStyle = BorderStyle.None,
-            Size = new Size(214, 24),
-            Location = new Point(38, 11),
-            Font = new Font("Segoe UI", 9.5f)
+            Size = new Size(242, 24),
+            Location = new Point(40, 11),
+            Font = UiTheme.BodyFont
         };
         _searchBox.TextChanged += (_, _) => ApplyFilter();
         _searchBox.PlaceholderText = "Filter folders or paths";
@@ -188,9 +199,9 @@ public sealed class MainForm : Form
         _tree = new TreeView
         {
             Dock = DockStyle.Fill,
-            BackColor = Color.FromArgb(18, 21, 27),
-            ForeColor = Color.FromArgb(220, 220, 220),
-            Font = new Font("Segoe UI", 9.5f),
+            BackColor = UiTheme.SurfacePanel,
+            ForeColor = UiTheme.TextPrimary,
+            Font = UiTheme.BodyFont,
             ImageList = _imageList,
             BorderStyle = BorderStyle.None,
             ShowLines = false,
@@ -210,9 +221,9 @@ public sealed class MainForm : Form
         _details = new ListView
         {
             Dock = DockStyle.Fill,
-            BackColor = Color.FromArgb(18, 21, 27),
-            ForeColor = Color.FromArgb(220, 220, 220),
-            Font = new Font("Segoe UI", 9.5f),
+            BackColor = UiTheme.SurfacePanel,
+            ForeColor = UiTheme.TextPrimary,
+            Font = UiTheme.BodyFont,
             View = View.Details,
             FullRowSelect = true,
             BorderStyle = BorderStyle.None,
@@ -239,9 +250,9 @@ public sealed class MainForm : Form
             Dock = DockStyle.Top,
             Height = 34,
             Text = "Folders",
-            Font = new Font("Segoe UI Semibold", 11f, FontStyle.Bold),
-            ForeColor = Color.White,
-            Padding = new Padding(18, 12, 18, 0)
+            Font = UiTheme.SectionTitleFont,
+            ForeColor = UiTheme.TextPrimary,
+            Padding = new Padding(20, 12, 18, 0)
         };
 
         _treeHint = new Label
@@ -249,21 +260,21 @@ public sealed class MainForm : Form
             Dock = DockStyle.Top,
             Height = 26,
             Text = "Scan a drive to surface the biggest directories first.",
-            Font = new Font("Segoe UI", 8.8f),
-            ForeColor = Color.FromArgb(134, 153, 168),
-            Padding = new Padding(18, 0, 18, 4)
+            Font = UiTheme.CaptionFont,
+            ForeColor = UiTheme.TextSubtle,
+            Padding = new Padding(20, 0, 18, 4)
         };
 
         _treeHost = new Panel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(8, 0, 8, 8),
+            Padding = new Padding(10, 0, 10, 10),
             BackColor = Color.Transparent
         };
         _treeEmptyState = new Panel
         {
             Dock = DockStyle.Fill,
-            BackColor = Color.FromArgb(16, 20, 26)
+            BackColor = UiTheme.SurfaceInset
         };
         _treeEmptyState.Paint += TreeEmptyState_Paint;
         _treeHost.Controls.Add(_tree);
@@ -272,7 +283,7 @@ public sealed class MainForm : Form
         _treePanel = new Panel
         {
             Dock = DockStyle.Fill,
-            BackColor = Color.FromArgb(20, 24, 30),
+            BackColor = UiTheme.SurfaceCard,
             Padding = new Padding(0),
             Margin = new Padding(0)
         };
@@ -284,8 +295,8 @@ public sealed class MainForm : Form
         _heroPanel = new Panel
         {
             Dock = DockStyle.Fill,
-            BackColor = Color.FromArgb(20, 24, 30),
-            Padding = new Padding(22, 20, 22, 16),
+            BackColor = UiTheme.SurfaceCard,
+            Padding = new Padding(24, 22, 24, 18),
             Margin = new Padding(0)
         };
         _heroPanel.Paint += HeroPanel_Paint;
@@ -294,26 +305,26 @@ public sealed class MainForm : Form
         {
             AutoSize = true,
             Text = "SpaceHog",
-            Font = new Font("Segoe UI Semibold", 18f, FontStyle.Bold),
-            ForeColor = Color.White,
+            Font = UiTheme.HeroTitleFont,
+            ForeColor = UiTheme.TextPrimary,
             BackColor = Color.Transparent,
-            Location = new Point(22, 18)
+            Location = new Point(24, 18)
         };
 
         _heroSubtitle = new Label
         {
             AutoSize = false,
             Text = "Live disk analysis with a faster sense of what is safe to inspect and what deserves caution.",
-            Font = new Font("Segoe UI", 10f),
-            ForeColor = Color.FromArgb(200, 220, 235),
+            Font = UiTheme.BodyFont,
+            ForeColor = UiTheme.TextSoft,
             BackColor = Color.Transparent,
-            Location = new Point(22, 54),
+            Location = new Point(24, 58),
             Size = new Size(720, 42)
         };
 
         _insightFlow = new FlowLayoutPanel
         {
-            Location = new Point(22, 104),
+            Location = new Point(24, 110),
             Size = new Size(760, 96),
             BackColor = Color.Transparent,
             WrapContents = true,
@@ -331,15 +342,15 @@ public sealed class MainForm : Form
         _usageChart = new UsageChartPanel
         {
             Dock = DockStyle.Fill,
-            BackColor = Color.FromArgb(20, 24, 30),
+            BackColor = UiTheme.SurfaceCard,
             Margin = new Padding(0),
-            Padding = new Padding(18, 14, 18, 14)
+            Padding = new Padding(20, 16, 20, 16)
         };
 
         _guidancePanel = new FolderGuidancePanel
         {
             Dock = DockStyle.Fill,
-            BackColor = Color.FromArgb(20, 24, 30),
+            BackColor = UiTheme.SurfaceCard,
             Margin = new Padding(0)
         };
 
@@ -360,7 +371,7 @@ public sealed class MainForm : Form
         var detailsPanel = new Panel
         {
             Dock = DockStyle.Fill,
-            BackColor = Color.FromArgb(20, 24, 30),
+            BackColor = UiTheme.SurfaceCard,
             Margin = new Padding(0),
             Padding = new Padding(0)
         };
@@ -371,9 +382,9 @@ public sealed class MainForm : Form
             Dock = DockStyle.Top,
             Height = 34,
             Text = "Contents",
-            Font = new Font("Segoe UI Semibold", 11f, FontStyle.Bold),
-            ForeColor = Color.White,
-            Padding = new Padding(18, 12, 18, 0)
+            Font = UiTheme.SectionTitleFont,
+            ForeColor = UiTheme.TextPrimary,
+            Padding = new Padding(20, 12, 18, 0)
         };
 
         var detailsHint = new Label
@@ -381,19 +392,75 @@ public sealed class MainForm : Form
             Dock = DockStyle.Top,
             Height = 26,
             Text = "Open folders, compare size share, and filter by name or path.",
-            Font = new Font("Segoe UI", 8.8f),
-            ForeColor = Color.FromArgb(134, 153, 168),
-            Padding = new Padding(18, 0, 18, 4)
+            Font = UiTheme.CaptionFont,
+            ForeColor = UiTheme.TextSubtle,
+            Padding = new Padding(20, 0, 18, 4)
         };
+
+        var detailsToolbar = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            Height = 42,
+            ColumnCount = 4,
+            BackColor = Color.Transparent,
+            Margin = new Padding(0),
+            Padding = new Padding(18, 2, 18, 2)
+        };
+        detailsToolbar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        detailsToolbar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        detailsToolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        detailsToolbar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+
+        _backButton = CreateToolbarButton("←", "Back");
+        _backButton.Click += (_, _) => NavigateHistory(-1);
+
+        _forwardButton = CreateToolbarButton("→", "Forward");
+        _forwardButton.Click += (_, _) => NavigateHistory(1);
+
+        _breadcrumbFlow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            AutoSize = true,
+            WrapContents = false,
+            AutoScroll = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            Margin = new Padding(8, 4, 8, 0),
+            Padding = new Padding(0),
+            BackColor = Color.Transparent
+        };
+
+        _densityButton = CreateToolbarButton("Comfortable", "Toggle density");
+        _densityButton.Width = 108;
+        _densityButton.Click += (_, _) => ToggleDensity();
+
+        detailsToolbar.Controls.Add(_backButton, 0, 0);
+        detailsToolbar.Controls.Add(_forwardButton, 1, 0);
+        detailsToolbar.Controls.Add(_breadcrumbFlow, 2, 0);
+        detailsToolbar.Controls.Add(_densityButton, 3, 0);
+
+        _filterChipFlow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            Height = 40,
+            BackColor = Color.Transparent,
+            WrapContents = false,
+            AutoScroll = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            Margin = new Padding(0),
+            Padding = new Padding(18, 4, 18, 4)
+        };
+        ConfigureFilterChips();
 
         var detailsHost = new Panel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(8, 0, 8, 8),
+            Padding = new Padding(10, 0, 10, 10),
             BackColor = Color.Transparent
         };
         detailsHost.Controls.Add(_details);
         detailsPanel.Controls.Add(detailsHost);
+        detailsPanel.Controls.Add(_filterChipFlow);
+        detailsPanel.Controls.Add(detailsToolbar);
         detailsPanel.Controls.Add(detailsHint);
         detailsPanel.Controls.Add(detailsTitle);
 
@@ -416,10 +483,10 @@ public sealed class MainForm : Form
         _shellLayout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            BackColor = Color.FromArgb(12, 14, 18),
+            BackColor = UiTheme.AppBackground,
             ColumnCount = 1,
             RowCount = 1,
-            Padding = new Padding(14, 12, 14, 10)
+            Padding = new Padding(16, 14, 16, 12)
         };
         _shellLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
         _shellLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
@@ -429,7 +496,7 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             Orientation = Orientation.Vertical,
-            BackColor = Color.FromArgb(12, 14, 18),
+            BackColor = UiTheme.AppBackground,
             SplitterWidth = 8,
             IsSplitterFixed = false,
             FixedPanel = FixedPanel.None
@@ -444,8 +511,8 @@ public sealed class MainForm : Form
         // --- Status bar ---
         _statusBar = new StatusStrip
         {
-            BackColor = Color.FromArgb(15, 19, 24),
-            ForeColor = Color.FromArgb(214, 224, 232),
+            BackColor = UiTheme.SurfaceHeader,
+            ForeColor = UiTheme.TextSoft,
             SizingGrip = false
         };
         _statusLabel = new ToolStripStatusLabel("Ready") { Spring = true, TextAlign = System.Drawing.ContentAlignment.MiddleLeft };
@@ -462,8 +529,8 @@ public sealed class MainForm : Form
         var treeMenu = new ContextMenuStrip
         {
             Renderer = new DarkToolStripRenderer(),
-            BackColor = Color.FromArgb(20, 24, 30),
-            ForeColor = Color.FromArgb(220, 220, 220)
+            BackColor = UiTheme.SurfaceCard,
+            ForeColor = UiTheme.TextPrimary
         };
         var openTreeFolder = new ToolStripMenuItem("Open in Explorer");
         openTreeFolder.Click += (_, _) =>
@@ -485,8 +552,8 @@ public sealed class MainForm : Form
         var detailsMenu = new ContextMenuStrip
         {
             Renderer = new DarkToolStripRenderer(),
-            BackColor = Color.FromArgb(20, 24, 30),
-            ForeColor = Color.FromArgb(220, 220, 220)
+            BackColor = UiTheme.SurfaceCard,
+            ForeColor = UiTheme.TextPrimary
         };
         detailsMenu.Opening += (_, _) => EnsureDetailsSelectionAtCursor();
         var openDetailsFolder = new ToolStripMenuItem("Open in Explorer");
@@ -515,6 +582,8 @@ public sealed class MainForm : Form
             LayoutDetailsColumns();
         };
         _stopButton.Enabled = false;
+        ApplyDensityMode();
+        UpdateNavigationButtons();
         UpdateInsights(null);
     }
 
@@ -630,19 +699,291 @@ public sealed class MainForm : Form
             FlatStyle = FlatStyle.Flat,
             BackColor = backColor,
             ForeColor = foreColor,
-            Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold),
+            Font = UiTheme.ButtonFont,
             Margin = new Padding(0, 0, 8, 0),
-            Padding = new Padding(14, 6, 14, 6),
+            Padding = new Padding(16, 6, 16, 6),
             FlatAppearance = { BorderSize = 0 }
+        };
+    }
+
+    private static Button CreateToolbarButton(string text, string accessibleName)
+    {
+        return new Button
+        {
+            AutoSize = false,
+            Width = 34,
+            Height = 28,
+            Text = text,
+            AccessibleName = accessibleName,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = UiTheme.SurfaceRaised,
+            ForeColor = UiTheme.TextPrimary,
+            Font = UiTheme.ButtonFont,
+            Margin = new Padding(0, 4, 6, 0),
+            Padding = new Padding(0),
+            FlatAppearance = { BorderSize = 0 }
+        };
+    }
+
+    private Button CreateFilterChip(string text)
+    {
+        var button = new Button
+        {
+            AutoSize = true,
+            Height = 28,
+            Text = text,
+            FlatStyle = FlatStyle.Flat,
+            Font = UiTheme.CaptionFont,
+            Margin = new Padding(0, 2, 8, 0),
+            Padding = new Padding(12, 4, 12, 4),
+            FlatAppearance = { BorderSize = 0 }
+        };
+        button.Click += (_, _) => SetActiveCategoryFilter(text);
+        return button;
+    }
+
+    private Button CreateBreadcrumbButton(string text, string fullPath)
+    {
+        var button = new Button
+        {
+            AutoSize = true,
+            Height = 24,
+            Text = text,
+            Tag = fullPath,
+            FlatStyle = FlatStyle.Flat,
+            Font = UiTheme.CaptionFont,
+            BackColor = Color.Transparent,
+            ForeColor = UiTheme.TextMuted,
+            Margin = new Padding(0, 0, 0, 0),
+            Padding = new Padding(2, 0, 2, 0),
+            FlatAppearance = { BorderSize = 0 }
+        };
+        button.Click += (_, _) => NavigateToPath(fullPath, true);
+        return button;
+    }
+
+    private void ConfigureFilterChips()
+    {
+        foreach (var label in new[] { "All", "Large", "User Data", "Temp/Cache", "System" })
+        {
+            var chip = CreateFilterChip(label);
+            _filterChipButtons[label] = chip;
+            _filterChipFlow.Controls.Add(chip);
+        }
+
+        UpdateFilterChipStyles();
+    }
+
+    private void SetActiveCategoryFilter(string filter)
+    {
+        _activeCategoryFilter = filter;
+        UpdateFilterChipStyles();
+
+        if (_tree.SelectedNode?.Tag is DirEntry entry)
+            PopulateDetails(entry);
+    }
+
+    private void UpdateFilterChipStyles()
+    {
+        foreach (var pair in _filterChipButtons)
+        {
+            var active = string.Equals(pair.Key, _activeCategoryFilter, StringComparison.OrdinalIgnoreCase);
+            pair.Value.BackColor = active ? UiTheme.Accent : UiTheme.SurfaceRaised;
+            pair.Value.ForeColor = active ? UiTheme.TextPrimary : UiTheme.TextMuted;
+        }
+    }
+
+    private void ToggleDensity()
+    {
+        _comfortableDensity = !_comfortableDensity;
+        ApplyDensityMode();
+    }
+
+    private void ApplyDensityMode()
+    {
+        _densityButton.Text = _comfortableDensity ? "Comfortable" : "Compact";
+        _tree.ItemHeight = _comfortableDensity ? 30 : 24;
+        _tree.Font = _comfortableDensity ? UiTheme.BodyFont : UiTheme.BodySmallFont;
+        _details.Font = _comfortableDensity ? UiTheme.BodyFont : UiTheme.BodySmallFont;
+        UpdateResponsiveLayout();
+        _tree.Invalidate();
+        _details.Invalidate();
+    }
+
+    private void NavigateHistory(int delta)
+    {
+        var nextIndex = _navigationIndex + delta;
+        if (nextIndex < 0 || nextIndex >= _navigationHistory.Count)
+            return;
+
+        _navigationIndex = nextIndex;
+        _suppressHistoryPush = true;
+        NavigateToPath(_navigationHistory[_navigationIndex], false);
+        UpdateNavigationButtons();
+    }
+
+    private void PushNavigation(string fullPath)
+    {
+        if (_navigationIndex >= 0 && _navigationIndex < _navigationHistory.Count &&
+            string.Equals(_navigationHistory[_navigationIndex], fullPath, StringComparison.OrdinalIgnoreCase))
+        {
+            UpdateNavigationButtons();
+            return;
+        }
+
+        if (_navigationIndex < _navigationHistory.Count - 1)
+            _navigationHistory.RemoveRange(_navigationIndex + 1, _navigationHistory.Count - _navigationIndex - 1);
+
+        _navigationHistory.Add(fullPath);
+        _navigationIndex = _navigationHistory.Count - 1;
+        UpdateNavigationButtons();
+    }
+
+    private void ResetNavigation()
+    {
+        _navigationHistory.Clear();
+        _navigationIndex = -1;
+        UpdateNavigationButtons();
+        _breadcrumbFlow.Controls.Clear();
+    }
+
+    private void UpdateNavigationButtons()
+    {
+        _backButton.Enabled = _navigationIndex > 0;
+        _forwardButton.Enabled = _navigationIndex >= 0 && _navigationIndex < _navigationHistory.Count - 1;
+    }
+
+    private void NavigateToPath(string fullPath, bool pushHistory)
+    {
+        var entry = FindEntryByPath(_root ?? _liveRoot, fullPath);
+        if (entry is null)
+            return;
+
+        var node = FindTreeNode(_tree.Nodes, entry);
+        if (node is not null)
+        {
+            _tree.SelectedNode = node;
+            node.Expand();
+        }
+        else
+        {
+            if (pushHistory)
+                PushNavigation(entry.FullPath);
+            PopulateDetails(entry);
+        }
+    }
+
+    private void UpdateBreadcrumbs(DirEntry entry)
+    {
+        _breadcrumbFlow.SuspendLayout();
+        _breadcrumbFlow.Controls.Clear();
+
+        var root = _root ?? _liveRoot;
+        if (root is null)
+        {
+            _breadcrumbFlow.ResumeLayout();
+            return;
+        }
+
+        foreach (var crumb in BuildBreadcrumbEntries(root, entry))
+        {
+            _breadcrumbFlow.Controls.Add(CreateBreadcrumbButton(crumb.Name, crumb.FullPath));
+            if (!string.Equals(crumb.FullPath, entry.FullPath, StringComparison.OrdinalIgnoreCase))
+            {
+                _breadcrumbFlow.Controls.Add(new Label
+                {
+                    AutoSize = true,
+                    Text = "›",
+                    Font = UiTheme.CaptionFont,
+                    ForeColor = UiTheme.TextSubtle,
+                    Margin = new Padding(2, 4, 6, 0)
+                });
+            }
+        }
+
+        _breadcrumbFlow.ResumeLayout();
+    }
+
+    private static List<DirEntry> BuildBreadcrumbEntries(DirEntry root, DirEntry entry)
+    {
+        var crumbs = new List<DirEntry>();
+        var rootPath = root.FullPath.TrimEnd('\\');
+        var currentPath = entry.FullPath.TrimEnd('\\');
+
+        while (!string.IsNullOrEmpty(currentPath))
+        {
+            var match = FindEntryByPath(root, currentPath);
+            if (match is not null)
+                crumbs.Add(match);
+
+            if (string.Equals(currentPath, rootPath, StringComparison.OrdinalIgnoreCase))
+                break;
+
+            currentPath = Path.GetDirectoryName(currentPath)?.TrimEnd('\\') ?? string.Empty;
+        }
+
+        crumbs.Reverse();
+        return crumbs.Count == 0 ? new List<DirEntry> { entry } : crumbs;
+    }
+
+    private static DirEntry? FindEntryByPath(DirEntry? root, string fullPath)
+    {
+        if (root is null) return null;
+        if (string.Equals(root.FullPath.TrimEnd('\\'), fullPath.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+            return root;
+
+        foreach (var child in root.Children)
+        {
+            var match = FindEntryByPath(child, fullPath);
+            if (match is not null)
+                return match;
+        }
+
+        return null;
+    }
+
+    private IEnumerable<DirEntry> GetVisibleChildren(DirEntry parent)
+    {
+        var searchFilter = _searchBox.Text?.Trim().ToLowerInvariant() ?? string.Empty;
+
+        foreach (var child in GetSortedChildren(parent))
+        {
+            if (!string.IsNullOrEmpty(searchFilter) &&
+                !child.Name.ToLowerInvariant().Contains(searchFilter) &&
+                !child.FullPath.ToLowerInvariant().Contains(searchFilter))
+            {
+                continue;
+            }
+
+            if (!MatchesCategoryFilter(child, parent))
+                continue;
+
+            yield return child;
+        }
+    }
+
+    private bool MatchesCategoryFilter(DirEntry entry, DirEntry parent)
+    {
+        var path = entry.FullPath.ToLowerInvariant();
+        var name = entry.Name.ToLowerInvariant();
+
+        return _activeCategoryFilter switch
+        {
+            "All" => true,
+            "Large" => parent.Size > 0 && (double)entry.Size / parent.Size >= 0.01d,
+            "User Data" => path.Contains("\\users\\") || name is "downloads" or "desktop" or "documents" or "pictures" or "source" or "repos",
+            "Temp/Cache" => name.Contains("temp") || name.Contains("cache") || name.Contains("packages") || name.Contains("recycle") || path.Contains("\\temp") || path.Contains("\\cache"),
+            "System" => path.Contains("\\windows") || path.Contains("\\program files") || path.Contains("\\programdata") || name is "system32" or "winsxs" || path.Contains("system volume information"),
+            _ => true
         };
     }
 
     private void HeaderPanel_Paint(object? sender, PaintEventArgs e)
     {
         var rect = _headerPanel.ClientRectangle;
-        using var brush = new LinearGradientBrush(rect, Color.FromArgb(14, 17, 22), Color.FromArgb(18, 28, 40), LinearGradientMode.Horizontal);
+        using var brush = new LinearGradientBrush(rect, UiTheme.SurfaceHeaderDeep, UiTheme.SurfaceHeader, LinearGradientMode.Horizontal);
         e.Graphics.FillRectangle(brush, rect);
-        using var pen = new Pen(Color.FromArgb(40, 78, 104));
+        using var pen = new Pen(UiTheme.BorderStrong);
         e.Graphics.DrawLine(pen, 0, rect.Bottom - 1, rect.Right, rect.Bottom - 1);
     }
 
@@ -652,12 +993,12 @@ public sealed class MainForm : Form
 
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         using var path = CreateRoundedRect(new Rectangle(0, 0, panel.Width - 1, panel.Height - 1), 14);
-        using var bgBrush = new SolidBrush(Color.FromArgb(15, 19, 24));
-        using var borderPen = new Pen(Color.FromArgb(44, 70, 90));
-        using var iconBrush = new SolidBrush(Color.FromArgb(134, 153, 168));
+        using var bgBrush = new SolidBrush(UiTheme.SurfaceInset);
+        using var borderPen = new Pen(UiTheme.Border);
+        using var iconBrush = new SolidBrush(UiTheme.TextSubtle);
         e.Graphics.FillPath(bgBrush, path);
         e.Graphics.DrawPath(borderPen, path);
-        e.Graphics.DrawString("⌕", new Font("Segoe UI Symbol", 12f), iconBrush, new PointF(12, 10));
+        e.Graphics.DrawString("⌕", UiTheme.IconFont, iconBrush, new PointF(12, 10));
     }
 
     private void TreeEmptyState_Paint(object? sender, PaintEventArgs e)
@@ -665,16 +1006,16 @@ public sealed class MainForm : Form
         if (!_treeEmptyState.Visible) return;
 
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        e.Graphics.Clear(Color.FromArgb(16, 20, 26));
-        using var titleBrush = new SolidBrush(Color.White);
-        using var bodyBrush = new SolidBrush(Color.FromArgb(148, 165, 178));
-        using var accentBrush = new SolidBrush(Color.FromArgb(48, 151, 209, 255));
+        e.Graphics.Clear(UiTheme.SurfaceInset);
+        using var titleBrush = new SolidBrush(UiTheme.TextPrimary);
+        using var bodyBrush = new SolidBrush(UiTheme.TextSoft);
+        using var accentBrush = new SolidBrush(Color.FromArgb(52, UiTheme.Accent));
         var centerX = _treeEmptyState.ClientSize.Width / 2f;
         e.Graphics.FillEllipse(accentBrush, centerX - 36, 116, 72, 72);
-        e.Graphics.DrawString("🐷", new Font("Segoe UI Emoji", 26f), titleBrush, new PointF(centerX - 22, 124));
+        e.Graphics.DrawString("🐷", UiTheme.EmptyStateIconFont, titleBrush, new PointF(centerX - 22, 124));
         var sf = new StringFormat { Alignment = StringAlignment.Center };
-        e.Graphics.DrawString("Start a scan to build your folder map", new Font("Segoe UI Semibold", 12f, FontStyle.Bold), titleBrush, new RectangleF(30, 210, _treeEmptyState.Width - 60, 26), sf);
-        e.Graphics.DrawString("The left pane will populate live while SpaceHog analyzes the selected drive.", new Font("Segoe UI", 9.5f), bodyBrush, new RectangleF(40, 244, _treeEmptyState.Width - 80, 48), sf);
+        e.Graphics.DrawString("Start a scan to build your folder map", UiTheme.EmptyStateTitleFont, titleBrush, new RectangleF(30, 210, _treeEmptyState.Width - 60, 26), sf);
+        e.Graphics.DrawString("The left pane will populate live while SpaceHog analyzes the selected drive.", UiTheme.BodyFont, bodyBrush, new RectangleF(40, 244, _treeEmptyState.Width - 80, 48), sf);
     }
 
     private void UpdateResponsiveLayout()
@@ -739,9 +1080,9 @@ public sealed class MainForm : Form
             _analyticsLayout.SetRow(_guidancePanel, 0);
         }
 
-        _usageChart.CompactMode = contentWidth < 620;
+        _usageChart.CompactMode = contentWidth < 620 || !_comfortableDensity;
         _usageChart.Invalidate();
-        _guidancePanel.CompactMode = contentWidth < 700;
+        _guidancePanel.CompactMode = contentWidth < 700 || !_comfortableDensity;
         _guidancePanel.Invalidate();
         _heroPanel.Invalidate();
         LayoutDetailsColumns();
@@ -899,6 +1240,7 @@ public sealed class MainForm : Form
     private void PrepareLiveScan(string path)
     {
         _root = null;
+        ResetNavigation();
         _liveRoot = new DirEntry
         {
             Name = path,
@@ -992,7 +1334,14 @@ public sealed class MainForm : Form
     private void Tree_AfterSelect(object? sender, TreeViewEventArgs e)
     {
         if (e.Node?.Tag is DirEntry entry)
+        {
+            if (_suppressHistoryPush)
+                _suppressHistoryPush = false;
+            else
+                PushNavigation(entry.FullPath);
+
             PopulateDetails(entry);
+        }
     }
 
     private void PopulateDetails(DirEntry parent)
@@ -1000,7 +1349,7 @@ public sealed class MainForm : Form
         _details.BeginUpdate();
         _details.Items.Clear();
 
-        foreach (var child in GetSortedChildren(parent))
+        foreach (var child in GetVisibleChildren(parent))
         {
             var pctParent = parent.Size > 0 ? (double)child.Size / parent.Size : 0;
             var pctTotal = _root?.Size > 0 ? (double)child.Size / _root.Size : 0;
@@ -1019,6 +1368,7 @@ public sealed class MainForm : Form
         }
 
         _details.EndUpdate();
+        UpdateBreadcrumbs(parent);
         UpdateInsights(parent);
     }
 
@@ -1061,8 +1411,8 @@ public sealed class MainForm : Form
         if (e.Node is null) return;
 
         var selected = (e.State & TreeNodeStates.Selected) == TreeNodeStates.Selected;
-        var background = selected ? Color.FromArgb(42, 108, 166) : Color.FromArgb(18, 21, 27);
-        var foreground = selected ? Color.White : Color.FromArgb(220, 220, 220);
+        var background = selected ? Color.FromArgb(42, 108, 166) : UiTheme.SurfacePanel;
+        var foreground = UiTheme.TextPrimary;
         var rowRect = new Rectangle(0, e.Bounds.Top, _tree.ClientSize.Width, e.Bounds.Height);
 
         using var backgroundBrush = new SolidBrush(background);
@@ -1091,13 +1441,13 @@ public sealed class MainForm : Form
         var rect = _heroPanel.ClientRectangle;
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         using var path = CreateRoundedRect(new Rectangle(0, 0, rect.Width - 1, rect.Height - 1), 22);
-        using var brush = new LinearGradientBrush(rect, Color.FromArgb(22, 48, 76), Color.FromArgb(36, 98, 153), LinearGradientMode.Horizontal);
+        using var brush = new LinearGradientBrush(rect, UiTheme.HeroLeft, UiTheme.HeroRight, LinearGradientMode.Horizontal);
         e.Graphics.FillPath(brush, path);
 
-        using var glowBrush = new SolidBrush(Color.FromArgb(40, 255, 255, 255));
+        using var glowBrush = new SolidBrush(Color.FromArgb(34, 255, 255, 255));
         e.Graphics.FillEllipse(glowBrush, rect.Width - 180, -60, 220, 220);
 
-        using var accentBrush = new SolidBrush(Color.FromArgb(26, 151, 209, 255));
+        using var accentBrush = new SolidBrush(Color.FromArgb(24, UiTheme.Accent));
         e.Graphics.FillEllipse(accentBrush, rect.Width - 120, rect.Height - 84, 96, 96);
 
         using var borderPen = new Pen(Color.FromArgb(58, 255, 255, 255));
@@ -1112,7 +1462,7 @@ public sealed class MainForm : Form
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         using var path = CreateRoundedRect(rect, 18);
         using var bgBrush = new SolidBrush(panel.BackColor);
-        using var borderPen = new Pen(Color.FromArgb(42, 72, 92));
+        using var borderPen = new Pen(UiTheme.Border);
         e.Graphics.FillPath(bgBrush, path);
         e.Graphics.DrawPath(borderPen, path);
     }
@@ -1120,11 +1470,11 @@ public sealed class MainForm : Form
     private void Splitter_Paint(object? sender, PaintEventArgs e)
     {
         var splitterRect = new Rectangle(_splitter.SplitterDistance, 0, _splitter.SplitterWidth, _splitter.Height);
-        using var brush = new SolidBrush(Color.FromArgb(12, 14, 18));
+        using var brush = new SolidBrush(UiTheme.AppBackground);
         e.Graphics.FillRectangle(brush, splitterRect);
 
         var gripX = splitterRect.X + (splitterRect.Width / 2) - 1;
-        using var gripBrush = new SolidBrush(Color.FromArgb(48, 92, 120));
+        using var gripBrush = new SolidBrush(UiTheme.BorderStrong);
         for (var y = splitterRect.Height / 2 - 20; y <= splitterRect.Height / 2 + 20; y += 10)
             e.Graphics.FillEllipse(gripBrush, gripX, y, 3, 3);
     }
@@ -1144,18 +1494,25 @@ public sealed class MainForm : Form
     // --- Custom drawing for the details list ---
     private void Details_DrawColumnHeader(object? sender, DrawListViewColumnHeaderEventArgs e)
     {
-        using var bgBrush = new SolidBrush(Color.FromArgb(45, 45, 48));
+        using var bgBrush = new SolidBrush(UiTheme.SurfaceRaised);
         e.Graphics.FillRectangle(bgBrush, e.Bounds);
-        using var fgBrush = new SolidBrush(Color.FromArgb(180, 180, 180));
+        using var fgBrush = new SolidBrush(UiTheme.TextMuted);
         var sf = new StringFormat { Alignment = StringAlignment.Near, LineAlignment = StringAlignment.Center };
         if (e.Header is not null)
         {
             if (e.Header.TextAlign == HorizontalAlignment.Right)
                 sf.Alignment = StringAlignment.Far;
-            e.Graphics.DrawString(e.Header.Text, Font, fgBrush, e.Bounds, sf);
+            e.Graphics.DrawString(e.Header.Text, UiTheme.CaptionFont, fgBrush, e.Bounds, sf);
         }
-        using var pen = new Pen(Color.FromArgb(60, 60, 65));
+        using var pen = new Pen(UiTheme.Border);
         e.Graphics.DrawLine(pen, e.Bounds.Left, e.Bounds.Bottom - 1, e.Bounds.Right, e.Bounds.Bottom - 1);
+
+        if (e.ColumnIndex == _detailsSortColumn)
+        {
+            var arrow = _detailsSortAscending ? "▲" : "▼";
+            using var sortBrush = new SolidBrush(UiTheme.AccentSoft);
+            e.Graphics.DrawString(arrow, UiTheme.CaptionFont, sortBrush, new RectangleF(e.Bounds.Right - 14, e.Bounds.Y + 6, 10, 12));
+        }
     }
 
     private void Details_DrawSubItem(object? sender, DrawListViewSubItemEventArgs e)
@@ -1163,8 +1520,8 @@ public sealed class MainForm : Form
         if (e.Item is null || e.SubItem is null) return;
 
         // Background
-        var bgColor = e.ItemIndex % 2 == 0 ? Color.FromArgb(30, 30, 30) : Color.FromArgb(35, 35, 38);
-        if (e.Item.Selected) bgColor = Color.FromArgb(0, 90, 158);
+        var bgColor = e.ItemIndex % 2 == 0 ? UiTheme.SurfacePanel : UiTheme.SurfaceInset;
+        if (e.Item.Selected) bgColor = Color.FromArgb(42, 108, 166);
         using var bgBrush = new SolidBrush(bgColor);
         e.Graphics.FillRectangle(bgBrush, e.Bounds);
 
@@ -1177,9 +1534,9 @@ public sealed class MainForm : Form
             SizeBarRenderer.DrawBar(e.Graphics, barRect, pctParent, SizeBarRenderer.GetColor(e.ItemIndex));
 
             // Draw percentage text on top
-            using var textBrush = new SolidBrush(Color.FromArgb(220, 220, 220));
+            using var textBrush = new SolidBrush(UiTheme.TextPrimary);
             var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-            e.Graphics.DrawString($"{pctParent:P1}", Font, textBrush, barRect, sf);
+            e.Graphics.DrawString($"{pctParent:P1}", UiTheme.CaptionFont, textBrush, barRect, sf);
             return;
         }
 
@@ -1193,20 +1550,20 @@ public sealed class MainForm : Form
                     e.Graphics.DrawImage(img, e.Bounds.X + 4, e.Bounds.Y + (e.Bounds.Height - 18) / 2, 18, 18);
             }
             var textRect = new Rectangle(e.Bounds.X + 26, e.Bounds.Y, e.Bounds.Width - 26, e.Bounds.Height);
-            using var fgBrush = new SolidBrush(Color.FromArgb(220, 220, 220));
+            using var fgBrush = new SolidBrush(UiTheme.TextPrimary);
             var sf = new StringFormat { LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
-            e.Graphics.DrawString(e.SubItem.Text, Font, fgBrush, textRect, sf);
+            e.Graphics.DrawString(e.SubItem.Text, UiTheme.BodyFont, fgBrush, textRect, sf);
             return;
         }
 
         // Default text draw
         {
-            var fgColor = e.ColumnIndex == 6 ? Color.FromArgb(140, 140, 150) : Color.FromArgb(220, 220, 220);
+            var fgColor = e.ColumnIndex == 6 ? UiTheme.TextSubtle : UiTheme.TextPrimary;
             using var fgBrush = new SolidBrush(fgColor);
             var sf = new StringFormat { LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
             if (e.Item.ListView?.Columns[e.ColumnIndex].TextAlign == HorizontalAlignment.Right)
                 sf.Alignment = StringAlignment.Far;
-            e.Graphics.DrawString(e.SubItem.Text, Font, fgBrush, e.Bounds, sf);
+            e.Graphics.DrawString(e.SubItem.Text, UiTheme.BodyFont, fgBrush, e.Bounds, sf);
         }
     }
 
@@ -1254,43 +1611,8 @@ public sealed class MainForm : Form
 
     private void ApplyFilter()
     {
-        var filter = _searchBox.Text?.Trim().ToLowerInvariant() ?? "";
-        if (string.IsNullOrEmpty(filter))
-        {
-            // Show all
-            if (_tree.SelectedNode?.Tag is DirEntry entry)
-                PopulateDetails(entry);
-            return;
-        }
-
-        // Filter details list
         if (_tree.SelectedNode?.Tag is DirEntry parent)
-        {
-            _details.BeginUpdate();
-            _details.Items.Clear();
-            foreach (var child in GetSortedChildren(parent))
-            {
-                if (!child.Name.ToLowerInvariant().Contains(filter) &&
-                    !child.FullPath.ToLowerInvariant().Contains(filter))
-                    continue;
-
-                var pctParent = parent.Size > 0 ? (double)child.Size / parent.Size : 0;
-                var pctTotal = _root?.Size > 0 ? (double)child.Size / _root.Size : 0;
-                var item = new ListViewItem(child.Name, child.Size > 1L << 30 ? "folder-large" : "folder")
-                {
-                    Tag = child,
-                    UseItemStyleForSubItems = false
-                };
-                item.SubItems.Add(DirEntry.FormatSize(child.Size));
-                item.SubItems.Add($"{pctParent:P1}");
-                item.SubItems.Add($"{pctTotal:P1}");
-                item.SubItems.Add($"{child.FileCount:N0}");
-                item.SubItems.Add($"{child.DirCount:N0}");
-                item.SubItems.Add(child.FullPath);
-                _details.Items.Add(item);
-            }
-            _details.EndUpdate();
-        }
+            PopulateDetails(parent);
     }
 
     private IEnumerable<DirEntry> GetSortedChildren(DirEntry parent)
@@ -1329,346 +1651,4 @@ public sealed class MainForm : Form
         StopScan();
         base.OnFormClosing(e);
     }
-}
-
-// Dark theme renderer for toolstrip
-file sealed class DarkToolStripRenderer : ToolStripProfessionalRenderer
-{
-    public DarkToolStripRenderer() : base(new DarkColorTable()) { }
-
-    protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
-    {
-        e.TextColor = Color.FromArgb(220, 220, 220);
-        base.OnRenderItemText(e);
-    }
-}
-
-file sealed class DarkColorTable : ProfessionalColorTable
-{
-    public override Color ToolStripBorder => Color.FromArgb(20, 24, 30);
-    public override Color ToolStripGradientBegin => Color.FromArgb(20, 24, 30);
-    public override Color ToolStripGradientMiddle => Color.FromArgb(20, 24, 30);
-    public override Color ToolStripGradientEnd => Color.FromArgb(20, 24, 30);
-    public override Color MenuItemSelected => Color.FromArgb(38, 44, 52);
-    public override Color MenuItemBorder => Color.FromArgb(56, 74, 90);
-    public override Color SeparatorDark => Color.FromArgb(44, 54, 62);
-    public override Color SeparatorLight => Color.FromArgb(44, 54, 62);
-}
-
-sealed class InsightCard : Panel
-{
-    private readonly Label _titleLabel;
-    private readonly Label _valueLabel;
-    private readonly Label _captionLabel;
-
-    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-    public string Title
-    {
-        get => _titleLabel.Text;
-        set => _titleLabel.Text = value;
-    }
-
-    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-    public string Value
-    {
-        get => _valueLabel.Text;
-        set => _valueLabel.Text = value;
-    }
-
-    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-    public string Caption
-    {
-        get => _captionLabel.Text;
-        set => _captionLabel.Text = value;
-    }
-
-    public InsightCard(string title, string value, string caption)
-    {
-        Size = new Size(220, 54);
-        Margin = new Padding(0, 0, 12, 0);
-        BackColor = Color.FromArgb(30, 41, 57);
-
-        _titleLabel = new Label
-        {
-            AutoSize = true,
-            ForeColor = Color.FromArgb(150, 190, 215),
-            Font = new Font("Segoe UI Semibold", 8.5f, FontStyle.Bold),
-            Location = new Point(12, 9),
-            Text = title,
-            BackColor = Color.Transparent
-        };
-
-        _valueLabel = new Label
-        {
-            AutoSize = true,
-            ForeColor = Color.White,
-            Font = new Font("Segoe UI Semibold", 11f, FontStyle.Bold),
-            Location = new Point(12, 24),
-            Text = value,
-            BackColor = Color.Transparent
-        };
-
-        _captionLabel = new Label
-        {
-            AutoEllipsis = true,
-            ForeColor = Color.FromArgb(148, 165, 178),
-            Font = new Font("Segoe UI", 8.5f),
-            Location = new Point(95, 26),
-            Size = new Size(112, 18),
-            Text = caption,
-            BackColor = Color.Transparent
-        };
-
-        Controls.AddRange(new Control[] { _titleLabel, _valueLabel, _captionLabel });
-    }
-
-    protected override void OnPaint(PaintEventArgs e)
-    {
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        using var path = MainForm.CreateRoundedRect(new Rectangle(0, 0, ClientRectangle.Width - 1, ClientRectangle.Height - 1), 14);
-        using var brush = new SolidBrush(BackColor);
-        using var borderPen = new Pen(Color.FromArgb(40, 255, 255, 255));
-        e.Graphics.FillPath(brush, path);
-        e.Graphics.DrawPath(borderPen, path);
-        base.OnPaint(e);
-    }
-}
-
-sealed class UsageChartPanel : Panel
-{
-    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-    public List<DirEntry> Entries { get; set; } = new();
-
-    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-    public long TotalSize { get; set; }
-
-    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-    public string Caption { get; set; } = "Top folders";
-
-    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-    public bool CompactMode { get; set; }
-
-    public UsageChartPanel()
-    {
-        DoubleBuffered = true;
-    }
-
-    protected override void OnPaint(PaintEventArgs e)
-    {
-        base.OnPaint(e);
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-
-        using var bgBrush = new SolidBrush(BackColor);
-        using var path = MainForm.CreateRoundedRect(new Rectangle(0, 0, Width - 1, Height - 1), 18);
-        using var borderPen = new Pen(Color.FromArgb(42, 72, 92));
-        e.Graphics.FillPath(bgBrush, path);
-        e.Graphics.DrawPath(borderPen, path);
-
-        using var titleBrush = new SolidBrush(Color.White);
-        using var subBrush = new SolidBrush(Color.FromArgb(136, 160, 180));
-        e.Graphics.DrawString(Caption, new Font("Segoe UI Semibold", 11f, FontStyle.Bold), titleBrush, new PointF(18, 14));
-        e.Graphics.DrawString("Largest children by size", new Font("Segoe UI", 8.5f), subBrush, new PointF(18, 36));
-
-        if (Entries.Count == 0 || TotalSize <= 0)
-        {
-            e.Graphics.DrawString("Scan a drive to see the biggest folders surface here in real time.", new Font("Segoe UI", 10f), subBrush, new RectangleF(18, 82, Width - 36, 32));
-            return;
-        }
-
-        var top = 68;
-        var rowHeight = CompactMode ? 14 : 18;
-        var gap = CompactMode ? 16 : 12;
-        for (var index = 0; index < Entries.Count && index < 6; index++)
-        {
-            var entry = Entries[index];
-            var fraction = TotalSize > 0 ? (double)entry.Size / TotalSize : 0;
-            var y = top + index * (rowHeight + gap);
-            var labelWidth = CompactMode ? Math.Max(120, Width - 36) : 190;
-            var labelRect = new Rectangle(18, y - 2, labelWidth, rowHeight);
-            var barY = CompactMode ? y + 18 : y;
-            var barX = CompactMode ? 18 : 210;
-            var barWidth = CompactMode ? Math.Max(110, Width - 154) : Math.Max(80, Width - 360);
-            var barRect = new Rectangle(barX, barY, barWidth, rowHeight - 2);
-            var valueRect = CompactMode
-                ? new Rectangle(Math.Max(140, Width - 126), barY - 2, 108, rowHeight)
-                : new Rectangle(Width - 136, y - 2, 118, rowHeight);
-
-            using var labelBrush = new SolidBrush(Color.FromArgb(220, 220, 220));
-            e.Graphics.DrawString(entry.Name, new Font("Segoe UI", 9f), labelBrush, labelRect, new StringFormat { Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap });
-
-            using var trackBrush = new SolidBrush(Color.FromArgb(38, 52, 68));
-            FillRoundedBar(e.Graphics, trackBrush, barRect, 8);
-
-            var fillWidth = Math.Max(6, (int)(barRect.Width * Math.Min(1d, fraction)));
-            var fillRect = new Rectangle(barRect.X, barRect.Y, fillWidth, barRect.Height);
-            using var fillBrush = new SolidBrush(SizeBarRenderer.GetColor(index));
-            FillRoundedBar(e.Graphics, fillBrush, fillRect, 8);
-
-            using var valueBrush = new SolidBrush(Color.FromArgb(170, 210, 230));
-            e.Graphics.DrawString($"{fraction:P1}  {DirEntry.FormatSize(entry.Size)}", new Font("Segoe UI", 8.5f), valueBrush, valueRect, new StringFormat { Alignment = StringAlignment.Far, FormatFlags = StringFormatFlags.NoWrap });
-        }
-    }
-
-    private static void FillRoundedBar(Graphics graphics, Brush brush, Rectangle bounds, int radius)
-    {
-        using var path = new GraphicsPath();
-        var diameter = radius * 2;
-        path.AddArc(bounds.X, bounds.Y, diameter, diameter, 180, 90);
-        path.AddArc(bounds.Right - diameter, bounds.Y, diameter, diameter, 270, 90);
-        path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
-        path.AddArc(bounds.X, bounds.Bottom - diameter, diameter, diameter, 90, 90);
-        path.CloseFigure();
-        graphics.FillPath(brush, path);
-    }
-}
-
-sealed class FolderGuidancePanel : Panel
-{
-    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-    public DirEntry? Entry { get; set; }
-
-    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-    public bool IsScanning { get; set; }
-
-    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-    public bool CompactMode { get; set; }
-
-    public FolderGuidancePanel()
-    {
-        DoubleBuffered = true;
-    }
-
-    protected override void OnPaint(PaintEventArgs e)
-    {
-        base.OnPaint(e);
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-
-        using var bgBrush = new SolidBrush(BackColor);
-        using var path = MainForm.CreateRoundedRect(new Rectangle(0, 0, Width - 1, Height - 1), 18);
-        using var borderPen = new Pen(Color.FromArgb(42, 72, 92));
-        e.Graphics.FillPath(bgBrush, path);
-        e.Graphics.DrawPath(borderPen, path);
-
-        var guidance = GetGuidance(Entry);
-
-        using var titleBrush = new SolidBrush(Color.White);
-        using var textBrush = new SolidBrush(Color.FromArgb(160, 182, 198));
-        using var subtleBrush = new SolidBrush(Color.FromArgb(120, 144, 160));
-        using var badgeBrush = new SolidBrush(guidance.BadgeColor);
-        using var badgeTextBrush = new SolidBrush(Color.White);
-
-        e.Graphics.DrawString("Cleanup guidance", new Font("Segoe UI Semibold", 11f, FontStyle.Bold), titleBrush, new PointF(18, 16));
-        e.Graphics.DrawString(guidance.Title, new Font("Segoe UI", 8.5f), subtleBrush, new PointF(18, 38));
-
-        using var badgePath = MainForm.CreateRoundedRect(new Rectangle(18, 62, CompactMode ? 84 : 104, 28), 12);
-        e.Graphics.FillPath(badgeBrush, badgePath);
-        e.Graphics.DrawString(guidance.BadgeText, new Font("Segoe UI Semibold", 8.5f, FontStyle.Bold), badgeTextBrush, new RectangleF(18, 68, CompactMode ? 84 : 104, 18), new StringFormat { Alignment = StringAlignment.Center });
-
-        var summaryTop = CompactMode ? 98 : 104;
-        e.Graphics.DrawString(guidance.Summary, new Font("Segoe UI", 9f), textBrush, new RectangleF(18, summaryTop, Width - 36, CompactMode ? 34 : 44));
-
-        var bulletTop = CompactMode ? 142 : 152;
-        for (var index = 0; index < guidance.Tips.Length; index++)
-        {
-            var y = bulletTop + index * (CompactMode ? 24 : 28);
-            using var dotBrush = new SolidBrush(index == 0 ? guidance.BadgeColor : Color.FromArgb(88, 104, 120));
-            e.Graphics.FillEllipse(dotBrush, 20, y + 5, 8, 8);
-            e.Graphics.DrawString(guidance.Tips[index], new Font("Segoe UI", 8.8f), textBrush, new RectangleF(36, y, Width - 54, 22));
-        }
-
-        if (IsScanning)
-        {
-            e.Graphics.DrawString("Guidance updates as selection changes during scan.", new Font("Segoe UI", 8f), subtleBrush, new RectangleF(18, Height - 28, Width - 36, 18));
-        }
-    }
-
-    private static GuidanceModel GetGuidance(DirEntry? entry)
-    {
-        if (entry is null)
-        {
-            return new GuidanceModel(
-                "Pick a folder",
-                "Start with the biggest categories first",
-                "Use the chart and folder list together. Large temp, download, and cache locations are usually your first review points.",
-                "Review top-level folders before deleting anything",
-                Color.FromArgb(78, 201, 176),
-                "Review",
-                new[]
-                {
-                    "Check Downloads, Temp, and recycle bin candidates first.",
-                    "Avoid deleting system folders directly from Windows root.",
-                    "Use app uninstall flows before removing program files manually."
-                });
-        }
-
-        var path = entry.FullPath.ToLowerInvariant();
-        var name = entry.Name.ToLowerInvariant();
-
-        if (path.Contains("\\windows") || name is "windows" or "system32" or "winsxs" or "recovery" || path.Contains("system volume information"))
-        {
-            return new GuidanceModel(
-                entry.Name,
-                "Windows-managed content",
-                "Do not delete files here manually unless you know the servicing and recovery impact. Use built-in cleanup tools instead.",
-                "Avoid manual deletion",
-                Color.FromArgb(209, 72, 54),
-                "Avoid",
-                new[]
-                {
-                    "Use Storage Sense or Disk Cleanup for Windows-managed files.",
-                    "WinSxS and System32 are not normal cleanup targets.",
-                    "Recovery and System Volume Information can break rollback or restore features."
-                });
-        }
-
-        if (name.Contains("program files") || path.Contains("\\program files") || path.Contains("\\programdata") || path.Contains("\\appdata"))
-        {
-            return new GuidanceModel(
-                entry.Name,
-                "Application-owned data",
-                "This space often belongs to installed apps. It can be reclaimed, but usually through uninstalling apps or clearing app-specific caches.",
-                "Proceed carefully",
-                Color.FromArgb(242, 170, 76),
-                "Caution",
-                new[]
-                {
-                    "Prefer uninstalling software instead of deleting folders by hand.",
-                    "AppData may contain safe caches, but also active settings and app state.",
-                    "ProgramData often stores shared app data used across users."
-                });
-        }
-
-        if (name.Contains("downloads") || name == "temp" || path.Contains("\\temp") || name.Contains("recycle"))
-        {
-            return new GuidanceModel(
-                entry.Name,
-                "Typical user cleanup target",
-                "This location is commonly worth reviewing first. Large installers, exports, cache files, and deleted items often accumulate here.",
-                "Usually safe to review",
-                Color.FromArgb(78, 201, 176),
-                "Safer",
-                new[]
-                {
-                    "Confirm files are not still needed before deleting them.",
-                    "Temp folders are generally safer than system directories.",
-                    "Empty the recycle bin after verifying recoverable items are not needed."
-                });
-        }
-
-        return new GuidanceModel(
-            entry.Name,
-            "Needs a quick review",
-            "This folder may be fine to clean, but the right action depends on what created the files and whether they are still in use.",
-            "Review before deleting",
-            Color.FromArgb(64, 140, 214),
-            "Review",
-            new[]
-            {
-                "Open the folder in Explorer if the contents are unfamiliar.",
-                "Sort by size and age before deleting large unknown files.",
-                "If it belongs to an installed app, look for that app's own cleanup or uninstall option."
-            });
-    }
-
-    private sealed record GuidanceModel(string Title, string Subtitle, string Summary, string BadgeHint, Color BadgeColor, string BadgeText, string[] Tips);
 }
