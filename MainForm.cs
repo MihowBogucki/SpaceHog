@@ -400,11 +400,11 @@ public sealed class MainForm : Form
         var detailsToolbar = new TableLayoutPanel
         {
             Dock = DockStyle.Top,
-            Height = 42,
+            Height = 34,
             ColumnCount = 4,
             BackColor = Color.Transparent,
             Margin = new Padding(0),
-            Padding = new Padding(18, 2, 18, 2)
+            Padding = new Padding(18, 0, 18, 0)
         };
         detailsToolbar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         detailsToolbar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -422,15 +422,15 @@ public sealed class MainForm : Form
             Dock = DockStyle.Fill,
             AutoSize = true,
             WrapContents = false,
-            AutoScroll = true,
+            AutoScroll = false,
             FlowDirection = FlowDirection.LeftToRight,
-            Margin = new Padding(8, 4, 8, 0),
+            Margin = new Padding(10, 4, 8, 0),
             Padding = new Padding(0),
             BackColor = Color.Transparent
         };
 
-        _densityButton = CreateToolbarButton("Comfortable", "Toggle density");
-        _densityButton.Width = 108;
+        _densityButton = CreateToolbarButton("Aa", "Toggle density");
+        _densityButton.Width = 40;
         _densityButton.Click += (_, _) => ToggleDensity();
 
         detailsToolbar.Controls.Add(_backButton, 0, 0);
@@ -441,13 +441,13 @@ public sealed class MainForm : Form
         _filterChipFlow = new FlowLayoutPanel
         {
             Dock = DockStyle.Top,
-            Height = 40,
+            Height = 34,
             BackColor = Color.Transparent,
             WrapContents = false,
-            AutoScroll = true,
+            AutoScroll = false,
             FlowDirection = FlowDirection.LeftToRight,
             Margin = new Padding(0),
-            Padding = new Padding(18, 4, 18, 4)
+            Padding = new Padding(18, 2, 18, 2)
         };
         ConfigureFilterChips();
 
@@ -473,8 +473,8 @@ public sealed class MainForm : Form
             Margin = new Padding(0),
             Padding = new Padding(0)
         };
-        _rightLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 220));
-        _rightLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 260));
+        _rightLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 182));
+        _rightLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 208));
         _rightLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
         _rightLayout.Controls.Add(_heroPanel, 0, 0);
         _rightLayout.Controls.Add(_analyticsLayout, 0, 1);
@@ -712,13 +712,13 @@ public sealed class MainForm : Form
         {
             AutoSize = false,
             Width = 34,
-            Height = 28,
+            Height = 24,
             Text = text,
             AccessibleName = accessibleName,
             FlatStyle = FlatStyle.Flat,
             BackColor = UiTheme.SurfaceRaised,
-            ForeColor = UiTheme.TextPrimary,
-            Font = UiTheme.ButtonFont,
+            ForeColor = UiTheme.TextMuted,
+            Font = UiTheme.CaptionFont,
             Margin = new Padding(0, 4, 6, 0),
             Padding = new Padding(0),
             FlatAppearance = { BorderSize = 0 }
@@ -730,12 +730,12 @@ public sealed class MainForm : Form
         var button = new Button
         {
             AutoSize = true,
-            Height = 28,
+            Height = 24,
             Text = text,
             FlatStyle = FlatStyle.Flat,
-            Font = UiTheme.CaptionFont,
+            Font = UiTheme.MicroFont,
             Margin = new Padding(0, 2, 8, 0),
-            Padding = new Padding(12, 4, 12, 4),
+            Padding = new Padding(10, 3, 10, 3),
             FlatAppearance = { BorderSize = 0 }
         };
         button.Click += (_, _) => SetActiveCategoryFilter(text);
@@ -751,11 +751,11 @@ public sealed class MainForm : Form
             Text = text,
             Tag = fullPath,
             FlatStyle = FlatStyle.Flat,
-            Font = UiTheme.CaptionFont,
+            Font = UiTheme.MicroFont,
             BackColor = Color.Transparent,
-            ForeColor = UiTheme.TextMuted,
+            ForeColor = UiTheme.TextSoft,
             Margin = new Padding(0, 0, 0, 0),
-            Padding = new Padding(2, 0, 2, 0),
+            Padding = new Padding(1, 0, 1, 0),
             FlatAppearance = { BorderSize = 0 }
         };
         button.Click += (_, _) => NavigateToPath(fullPath, true);
@@ -764,7 +764,7 @@ public sealed class MainForm : Form
 
     private void ConfigureFilterChips()
     {
-        foreach (var label in new[] { "All", "Large", "User Data", "Temp/Cache", "System" })
+        foreach (var label in new[] { "All", "Big", "User", "Temp", "System" })
         {
             var chip = CreateFilterChip(label);
             _filterChipButtons[label] = chip;
@@ -789,7 +789,7 @@ public sealed class MainForm : Form
         {
             var active = string.Equals(pair.Key, _activeCategoryFilter, StringComparison.OrdinalIgnoreCase);
             pair.Value.BackColor = active ? UiTheme.Accent : UiTheme.SurfaceRaised;
-            pair.Value.ForeColor = active ? UiTheme.TextPrimary : UiTheme.TextMuted;
+            pair.Value.ForeColor = active ? UiTheme.TextPrimary : UiTheme.TextSoft;
         }
     }
 
@@ -801,7 +801,7 @@ public sealed class MainForm : Form
 
     private void ApplyDensityMode()
     {
-        _densityButton.Text = _comfortableDensity ? "Comfortable" : "Compact";
+        _densityButton.Text = _comfortableDensity ? "Aa" : "A";
         _tree.ItemHeight = _comfortableDensity ? 30 : 24;
         _tree.Font = _comfortableDensity ? UiTheme.BodyFont : UiTheme.BodySmallFont;
         _details.Font = _comfortableDensity ? UiTheme.BodyFont : UiTheme.BodySmallFont;
@@ -885,18 +885,38 @@ public sealed class MainForm : Form
             return;
         }
 
-        foreach (var crumb in BuildBreadcrumbEntries(root, entry))
+        var fullCrumbs = BuildBreadcrumbEntries(root, entry);
+        var crumbs = fullCrumbs.Count > 4
+            ? new List<DirEntry> { fullCrumbs[0], fullCrumbs[^2], fullCrumbs[^1] }
+            : fullCrumbs;
+
+        for (var index = 0; index < crumbs.Count; index++)
         {
+            var crumb = crumbs[index];
             _breadcrumbFlow.Controls.Add(CreateBreadcrumbButton(crumb.Name, crumb.FullPath));
+
+            if (index == 0 && fullCrumbs.Count > 4)
+            {
+                _breadcrumbFlow.Controls.Add(new Label
+                {
+                    AutoSize = true,
+                    Text = "› ... ›",
+                    Font = UiTheme.MicroFont,
+                    ForeColor = UiTheme.TextSubtle,
+                    Margin = new Padding(2, 4, 8, 0)
+                });
+                continue;
+            }
+
             if (!string.Equals(crumb.FullPath, entry.FullPath, StringComparison.OrdinalIgnoreCase))
             {
                 _breadcrumbFlow.Controls.Add(new Label
                 {
                     AutoSize = true,
                     Text = "›",
-                    Font = UiTheme.CaptionFont,
+                    Font = UiTheme.MicroFont,
                     ForeColor = UiTheme.TextSubtle,
-                    Margin = new Padding(2, 4, 6, 0)
+                    Margin = new Padding(2, 4, 8, 0)
                 });
             }
         }
@@ -970,9 +990,9 @@ public sealed class MainForm : Form
         return _activeCategoryFilter switch
         {
             "All" => true,
-            "Large" => parent.Size > 0 && (double)entry.Size / parent.Size >= 0.01d,
-            "User Data" => path.Contains("\\users\\") || name is "downloads" or "desktop" or "documents" or "pictures" or "source" or "repos",
-            "Temp/Cache" => name.Contains("temp") || name.Contains("cache") || name.Contains("packages") || name.Contains("recycle") || path.Contains("\\temp") || path.Contains("\\cache"),
+            "Big" => parent.Size > 0 && (double)entry.Size / parent.Size >= 0.01d,
+            "User" => path.Contains("\\users\\") || name is "downloads" or "desktop" or "documents" or "pictures" or "source" or "repos",
+            "Temp" => name.Contains("temp") || name.Contains("cache") || name.Contains("packages") || name.Contains("recycle") || path.Contains("\\temp") || path.Contains("\\cache"),
             "System" => path.Contains("\\windows") || path.Contains("\\program files") || path.Contains("\\programdata") || name is "system32" or "winsxs" || path.Contains("system volume information"),
             _ => true
         };
@@ -1026,16 +1046,16 @@ public sealed class MainForm : Form
         var compact = contentWidth < 560;
         var medium = contentWidth < 760;
 
-        int heroHeight = compact ? 280 : medium ? 240 : 220;
+        int heroHeight = compact ? 228 : medium ? 196 : 168;
         _rightLayout.RowStyles[0].Height = heroHeight;
-        _rightLayout.RowStyles[1].Height = compact ? 320 : 260;
+        _rightLayout.RowStyles[1].Height = compact ? 254 : 198;
 
         _heroSubtitle.Width = Math.Max(220, _heroPanel.ClientSize.Width - 44);
-        _heroSubtitle.Height = compact ? 54 : 40;
+        _heroSubtitle.Height = compact ? 46 : 34;
         _heroSubtitle.MaximumSize = new Size(Math.Max(220, _heroPanel.ClientSize.Width - 44), 0);
 
-        _insightFlow.Location = new Point(22, compact ? 124 : 104);
-        _insightFlow.Size = new Size(Math.Max(220, _heroPanel.ClientSize.Width - 44), compact ? 112 : 96);
+        _insightFlow.Location = new Point(24, compact ? 102 : 92);
+        _insightFlow.Size = new Size(Math.Max(220, _heroPanel.ClientSize.Width - 44), compact ? 98 : 76);
 
         var cardWidth = compact ? _insightFlow.Width : Math.Max(180, (_insightFlow.Width - 24) / 3);
         foreach (Control control in _insightFlow.Controls)
